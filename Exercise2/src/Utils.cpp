@@ -235,7 +235,7 @@ bool ImportCell2D(PolygonalMesh& mesh)
 		
 		converter >> id >> tmp >> marker >> tmp >> numV >> tmp;
 		
-		vertices.reserve(numV);
+		vertices.reserve(numV); //Aggiorno la capacità del vettore
         for(unsigned int i = 0; i < numV; i++) 
 		{
 			unsigned int vertex;
@@ -244,7 +244,7 @@ bool ImportCell2D(PolygonalMesh& mesh)
 		}
 		
 		converter >> numE;
-		edges.reserve(numE);
+		edges.reserve(numE); //Aggiorno la capacità del vettore
         for(unsigned int i = 0; i < numE; i++)
 		{
             unsigned int edge;
@@ -293,6 +293,7 @@ bool ImportCell2D(PolygonalMesh& mesh)
 		}
     }
 	
+	//Stampo eventuale esito positivo del check sull'area
 	if (notNull) {
 		cout << "All polygons have non-zero area." << endl;
 	}
@@ -302,11 +303,12 @@ bool ImportCell2D(PolygonalMesh& mesh)
 
 void PrintMarkers(const map<unsigned int, list<unsigned int>>& m) 
 {
+	//Controllo se ci sono marker diversi da zero.
 	if (m.size() == 0){
 		cout << "No non-zero markers found." << endl;
 		return;
 	}
-	
+	//Stampo i marker diversi da zero con id associati.
 	for (const auto& [k, v] : m) 
 	{
 		cout << "\t" << k << " : { ";
