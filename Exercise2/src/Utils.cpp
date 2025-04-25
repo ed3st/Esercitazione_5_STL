@@ -4,6 +4,7 @@
 #include <sstream>
 #include <cmath>
 #include <vector>
+#include <map>
 #include <Eigen/Eigen>
 
 using namespace std;
@@ -21,6 +22,19 @@ bool ImportMesh(PolygonalMesh& mesh)
 	
 	if ( !ImportCell2D(mesh))
 		return false;
+	
+	//Stampo i marker per controllare che siano stati memorizzati correttamente.
+	//Marker Cell0D
+	cout << "Cell0D markers:" << endl;
+	PrintMarkers(mesh.Cell0DMarker);
+	
+	//Marker Cell1D
+	cout << "Cell1D markers:" << endl;
+	PrintMarkers(mesh.Cell1DMarker);
+	
+	//Marker Cell2D
+	cout << "Cell2D markers:" << endl;
+	PrintMarkers(mesh.Cell2DMarker);
 	
 	return true;
 }
@@ -65,22 +79,23 @@ bool ImportCell0D(PolygonalMesh& mesh)
 		
 		mesh.Cell0DId.push_back(id);
 		
-		//Check sul marker
-		if  (marker != 0) //Se il marker non è nullo
+		/*Memorizzazione del marker. Se è diverso da zero, procedo con la memorizzazione. 
+		Controllo se è tra i marker già trovati: 
+		- se no, lo aggiungo e gli associo il vertice id;
+		- se si, aggiungo id alla lista dei vertici associati.*/
+		if  (marker != 0) 
 		{
-			const auto it = mesh.Cell0DMarker.find(marker); //Controllo se il marker è tra i marker di Cell0D già trovati:
+			const auto it = mesh.Cell0DMarker.find(marker);
 			if (it == mesh.Cell0DMarker.end()) 
 			{
-				mesh.Cell0DMarker.insert({marker,{id}}); //se no, lo aggiungo con id nodo associato,
+				mesh.Cell0DMarker.insert({marker,{id}}); 
 			}
 			else 
 			{
-				it->second.push_back(id); //se sì, aggiungo id ai nodi associati.
+				it->second.push_back(id); 
 			}
 		}
-		
 	}
-	
 	return true;
 }
 // ********************************************************************
@@ -109,8 +124,13 @@ bool ImportCell1D(PolygonalMesh& mesh)
 		return false;
 	};
 	
-	mesh.Cell1DId.reserve(mesh.NumCell1D); 
-	mesh.Cell1DExtrema = MatrixXi::Zero(2,mesh.NumCell1D);
+	mesh.Cell1DId.reserve(mesh.NumCell1D);  //Aggiorno opportunamente la capacità del vettore.
+	mesh.Cell1DExtrema = MatrixXi::Zero(2,mesh.NumCell1D); //Qui salverò gli id dei punti estremi dei lati.
+	
+	/*Variabile booleana che tiene traccia della presenza o meno di lati di lunghezza nulla. 
+	Se notNull = true non ci sono lati di lunghezza nulla, altrimenti notNull = false.*/
+	bool notNull = true; 
+	
 	// "Riempio" mesh.Cell1DId, mesh.Cell1DExtrema e mesh.Cell1DMarker 
 	for(const string& line : listLines) 
 	{
@@ -123,6 +143,28 @@ bool ImportCell1D(PolygonalMesh& mesh)
 		
 		converter >> id >> tmp >> marker >> tmp >> vertices(0) >> tmp >> vertices(1);
 		
+		//Aggiungo id e estremi alla mesh
+		mesh.Cell1DId.push_back(id);
+		mesh.Cell1DExtrema(0, id) = vertices(0);
+		mesh.Cell1DExtrema(1, id) = vertices(1);
+		
+		/*Memorizzazione del marker. Se è diverso da zero, procedo con la memorizzazione. 
+		Controllo se è tra i marker già trovati: 
+		- se no, lo aggiungo e gli associo il lato id;
+		- se si, aggiungo id alla lista dei lati associati.*/
+		if ( marker != 0 )
+		{
+			const auto it = mesh.Cell1DMarker.find(marker); 
+			if ( it == mesh.Cell1DMarker.end() ) 
+			{
+				mesh.Cell1DMarker.insert({marker,{id}});
+			}
+			else 
+			{
+				it->second.push_back(id); 
+			}
+		}
+		
 		//Check sulla lunchezza del lato
 		double lengthEdge;
 		const Vector3d& originCoord = mesh.Cell0DCoord.col(vertices(0));
@@ -130,30 +172,16 @@ bool ImportCell1D(PolygonalMesh& mesh)
 		lengthEdge = pow((originCoord(0) - endCoord(0)),2) + pow((originCoord(1) - endCoord(1)),2); //Calcolo la lunghezza del lato con il teorema di Pitagora
 		lengthEdge = sqrt(lengthEdge);
 		if (lengthEdge < 1e-16) {
-			cerr << "Edge with length 0 found." << endl;
-			return false;
+			notNull = false;
+			cout << "Edge with length 0 found. Edge id: " << id << " ." << endl;
 		}	
 		
-		//Aggiungo id e estremi alla mesh
-		mesh.Cell1DId.push_back(id);
-		mesh.Cell1DExtrema(0, id) = vertices(0);
-		mesh.Cell1DExtrema(1, id) = vertices(1);
-		
-		//Check sul marker
-		if ( marker != 0 )
-		{
-			const auto it = mesh.Cell1DMarker.find(marker); //Controllo se marker è tra i marker di Cell1D già trovati:
-			if ( it == mesh.Cell1DMarker.end() ) 
-			{
-				mesh.Cell1DMarker.insert({marker,{id}}); //se no lo aggiungo con id nodo associato,
-			}
-			else 
-			{
-				it->second.push_back(id); //se sì aggiungo id ai nodi associati.
-			}
-		}
-		
 	}
+	
+	//Stampo eventuale esito positivo del test sulla lunghezza del lato. 
+	if (notNull)
+		cout << "All edges have non-zero length." << endl;
+	
 	return true;
 }
 // ********************************************************************
@@ -188,6 +216,10 @@ bool ImportCell2D(PolygonalMesh& mesh)
     mesh.Cell2DVertices.reserve(mesh.NumCell2D);
 	mesh.Cell2DNumE.reserve(mesh.NumCell2D);
     mesh.Cell2DEdges.reserve(mesh.NumCell2D);
+	
+	/*Variabile booleana che tiene traccia della presenza o meno di poligoni di area nulla. 
+	Se notNull = true non ci sono poligoni di area nulla, altrimenti notNull = false.*/
+	bool notNull = true; 
 
     for (const string& line : listLines)
     {
@@ -219,7 +251,30 @@ bool ImportCell2D(PolygonalMesh& mesh)
             converter >> tmp >> edge ;
 			edges.push_back(edge);
 		}
+
+        mesh.Cell2DId.push_back(id);
+        mesh.Cell2DNumV.push_back(numV);
+		mesh.Cell2DVertices.push_back(vertices);
+        mesh.Cell2DNumE.push_back(numE);
+		mesh.Cell2DEdges.push_back(edges);
 		
+		/*Memorizzazione del marker. Se è diverso da zero, procedo con la memorizzazione. 
+		Controllo se è tra i marker già trovati: 
+		- se no, lo aggiungo e gli associo il poligono id;
+		- se si, aggiungo id alla lista dei poligoni associati.*/
+		if ( marker != 0 )
+		{
+			const auto it = mesh.Cell2DMarker.find(marker);
+			if ( it == mesh.Cell2DMarker.end() ) 
+			{
+				mesh.Cell2DMarker.insert({marker,{id}});
+			}
+			else 
+			{
+				it->second.push_back(id);
+			}
+		}
+
 		//Check sull'area. Per calcolare l'area scompongo il poligono in triangoli.
 		double area = 0.0;
 		const MatrixXd& coord = mesh.Cell0DCoord;
@@ -233,30 +288,39 @@ bool ImportCell2D(PolygonalMesh& mesh)
 		}
 		area = abs(area)*0.5;
 		if (area < 1e-16) {
-			cerr << "Polygon with null area found." <<endl;
-			return false;
+			cerr << "Polygon with null area found.Polygon id: " << id << " ." << endl;
+			notNull = false;
 		}
-
-        mesh.Cell2DId.push_back(id);
-        mesh.Cell2DNumV.push_back(numV);
-		mesh.Cell2DVertices.push_back(vertices);
-        mesh.Cell2DNumE.push_back(numE);
-		mesh.Cell2DEdges.push_back(edges);
-		
-		//Check sul marker
-		if ( marker != 0 )
-		{
-			const auto it = mesh.Cell2DMarker.find(marker); //Controllo se marker è tra i marker di Cell1D già trovati:
-			if ( it == mesh.Cell2DMarker.end() ) 
-			{
-				mesh.Cell2DMarker.insert({marker,{id}}); //se no lo aggiungo con id nodo associato,
-			}
-			else 
-			{
-				it->second.push_back(id); //se sì aggiungo id ai nodi associati.
-			}
-		}		
     }
+	
+	if (notNull) {
+		cout << "All polygons have non-zero area." << endl;
+	}
+	
 	return true;
 }
+
+void PrintMarkers(const map<unsigned int, list<unsigned int>>& m) 
+{
+	if (m.size() == 0){
+		cout << "No non-zero markers found." << endl;
+		return;
+	}
+	
+	for (const auto& [k, v] : m) 
+	{
+		cout << "\t" << k << " : { ";
+		unsigned int j = 0; //Contatore che uso per sapere quando stampare la virgola
+		for (const auto& w : v) 
+		{
+			if (j > 0)
+				cout << ", ";
+			
+			cout << w;
+			j++;
+		}
+		cout << " }" << endl;
+	}
+}
+
 }
